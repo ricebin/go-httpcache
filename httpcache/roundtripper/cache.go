@@ -40,7 +40,7 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		// TODO(ricebin): customize this
 		return nil, err
 	} else if cached != nil {
-		return http.ReadResponse(bufio.NewReader(bytes.NewReader(cached.Value())), req)
+		return http.ReadResponse(bufio.NewReader(bytes.NewReader(cached)), req)
 	}
 
 	if resp, err, _ := c.g.Do(urlKey, func() (any, error) {

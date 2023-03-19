@@ -97,18 +97,18 @@ type inmemoryCache struct {
 	clock Clock
 }
 
-func (c *inmemoryCache) Get(ctx context.Context, url string) (roundtripper.CachedResult, error) {
+func (c *inmemoryCache) Get(_ context.Context, url string) ([]byte, error) {
 	v, ok := c.cache[url]
 	if !ok {
 		return nil, nil
 	}
 	if v.expiration.After(c.clock.Now()) {
-		return v, nil
+		return v.value, nil
 	}
 	return nil, nil
 }
 
-func (c *inmemoryCache) Set(ctx context.Context, url string, rawResponse []byte, expiration time.Duration) error {
+func (c *inmemoryCache) Set(_ context.Context, url string, rawResponse []byte, expiration time.Duration) error {
 	c.cache[url] = &cachedResult{
 		value:      rawResponse,
 		expiration: c.clock.Now().Add(expiration),
