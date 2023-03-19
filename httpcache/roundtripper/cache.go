@@ -15,13 +15,19 @@ type CachedRoundTripper struct {
 	delegate http.RoundTripper
 	cache    Cache
 
-	g singleflight.Group
+	now func() time.Time
+	g   singleflight.Group
 }
 
 func Wrap(delegate http.RoundTripper, cache Cache) *CachedRoundTripper {
+	return WrapWithClock(delegate, cache, time.Now)
+}
+
+func WrapWithClock(delegate http.RoundTripper, cache Cache, now func() time.Time) *CachedRoundTripper {
 	return &CachedRoundTripper{
 		delegate: delegate,
 		cache:    cache,
+		now:      now,
 	}
 }
 
@@ -43,10 +49,10 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	urlKey := req.URL.String()
 	ctx := req.Context()
 
-	if cached, err := c.cache.Get(ctx, urlKey); err != nil {
+	if cached, insertionTime, err := c.cache.Get(ctx, urlKey); err != nil {
 		// TODO(ricebin): customize this
 		return nil, err
-	} else if cached != nil {
+	} else if cached != nil && insertionTime != nil && insertionTime.Add(expiration).After(c.now()) {
 		return http.ReadResponse(bufio.NewReader(bytes.NewReader(cached)), req)
 	}
 

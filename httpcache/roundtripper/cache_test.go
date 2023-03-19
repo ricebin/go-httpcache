@@ -1,6 +1,7 @@
 package roundtripper_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -28,7 +29,7 @@ func TestWrap_Happy(t *testing.T) {
 		cache: make(map[string]*cachedResult),
 		clock: fc,
 	}
-	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache)
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
 
 	hc := &http.Client{
 		Transport: cacheTransport,
@@ -36,22 +37,22 @@ func TestWrap_Happy(t *testing.T) {
 
 	expiration := 1 * time.Hour
 
-	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, "GET:0:/one")
+	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:0:/one"))
 
 	// increment clock
 	fc.Add(30 * time.Minute)
 
 	// read the same url, assert cache hit
-	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, "GET:0:/one")
-	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, "GET:0:/two")
+	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:0:/one"))
+	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, []byte("GET:0:/two"))
 
 	// increment clock
 	fc.Add(45 * time.Minute)
 
 	// one expired
-	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, "GET:1:/one")
+	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:1:/one"))
 	// two hasnt expired
-	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, "GET:0:/two")
+	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, []byte("GET:0:/two"))
 }
 
 func TestWrap_DontCache_OnError(t *testing.T) {
@@ -72,7 +73,7 @@ func TestWrap_DontCache_OnError(t *testing.T) {
 		cache: make(map[string]*cachedResult),
 		clock: fc,
 	}
-	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache)
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
 
 	hc := &http.Client{
 		Transport: cacheTransport,
@@ -80,13 +81,13 @@ func TestWrap_DontCache_OnError(t *testing.T) {
 
 	expiration := 1 * time.Hour
 
-	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusBadRequest, "GET:0:/one")
+	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusBadRequest, []byte("GET:0:/one"))
 	if (len(cache.cache)) != 0 {
 		t.Errorf("should not cache anything")
 	}
 
 	nextStatusCode = http.StatusInternalServerError
-	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusInternalServerError, "GET:1:/one")
+	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusInternalServerError, []byte("GET:1:/one"))
 	if (len(cache.cache)) != 0 {
 		t.Errorf("should not cache anything")
 	}
@@ -110,19 +111,83 @@ func TestWrap_DontCache_NoHeader(t *testing.T) {
 		cache: make(map[string]*cachedResult),
 		clock: fc,
 	}
-	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache)
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
 
 	hc := &http.Client{
 		Transport: cacheTransport,
 	}
 
-	assertResponse(t, hc, ts.URL+"/one", nil, http.StatusBadRequest, "GET:0:/one")
+	assertResponse(t, hc, ts.URL+"/one", nil, http.StatusBadRequest, []byte("GET:0:/one"))
 	if (len(cache.cache)) != 0 {
 		t.Errorf("should not cache anything")
 	}
 }
 
-func assertResponse(t *testing.T, hc *http.Client, url string, expire *time.Duration, expectedCode int, expected string) {
+func TestWrap_ChangeExpiration(t *testing.T) {
+	hitCounters := make(map[string]int)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter := hitCounters[r.URL.String()]
+		hitCounters[r.URL.String()] = counter + 1
+		fmt.Fprint(w, r.Method, ":", counter, ":", r.URL.String())
+	}))
+	defer ts.Close()
+
+	fc := &fakeClock{
+		now: time.Now(),
+	}
+	cache := &inmemoryCache{
+		cache: make(map[string]*cachedResult),
+		clock: fc,
+	}
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
+
+	hc := &http.Client{
+		Transport: cacheTransport,
+	}
+
+	oneHourExpiration := 1 * time.Hour
+	assertResponse(t, hc, ts.URL+"/one", &oneHourExpiration, http.StatusOK, []byte("GET:0:/one"))
+
+	fc.Add(30 * time.Minute)
+	assertResponse(t, hc, ts.URL+"/one", &oneHourExpiration, http.StatusOK, []byte("GET:0:/one"))
+
+	newExpiration := 10 * time.Minute
+	assertResponse(t, hc, ts.URL+"/one", &newExpiration, http.StatusOK, []byte("GET:1:/one"))
+}
+
+func TestWrap_Binary(t *testing.T) {
+	payload := []byte{1, 2, 3, 4, 5}
+	counter := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter = counter + 1
+		w.Write(payload)
+	}))
+	defer ts.Close()
+
+	fc := &fakeClock{
+		now: time.Now(),
+	}
+	cache := &inmemoryCache{
+		cache: make(map[string]*cachedResult),
+		clock: fc,
+	}
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
+
+	hc := &http.Client{
+		Transport: cacheTransport,
+	}
+
+	oneHourExpiration := 1 * time.Hour
+	assertResponse(t, hc, ts.URL+"/one", &oneHourExpiration, http.StatusOK, payload)
+
+	fc.Add(30 * time.Minute)
+	assertResponse(t, hc, ts.URL+"/one", &oneHourExpiration, http.StatusOK, payload)
+	if counter != 1 {
+		t.Errorf("expected counter to be 1")
+	}
+}
+
+func assertResponse(t *testing.T, hc *http.Client, url string, expire *time.Duration, expectedCode int, expected []byte) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -140,8 +205,8 @@ func assertResponse(t *testing.T, hc *http.Client, url string, expire *time.Dura
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(got) != expected {
-			t.Errorf("expectect: %v but got: %v", expected, string(got))
+		if !bytes.Equal(got, expected) {
+			t.Errorf("expectect: %v but got: %v", expected, got)
 		}
 	}
 }
@@ -164,6 +229,7 @@ func (c *fakeClock) Add(d time.Duration) {
 
 type cachedResult struct {
 	value      []byte
+	insertion  time.Time
 	expiration time.Time
 }
 
@@ -176,21 +242,21 @@ type inmemoryCache struct {
 	clock Clock
 }
 
-func (c *inmemoryCache) Get(_ context.Context, url string) ([]byte, error) {
+func (c *inmemoryCache) Get(_ context.Context, url string) ([]byte, *time.Time, error) {
+	now := time.Now()
 	v, ok := c.cache[url]
-	if !ok {
-		return nil, nil
+	if ok && v.expiration.After(now) {
+		return v.value, &v.insertion, nil
 	}
-	if v.expiration.After(c.clock.Now()) {
-		return v.value, nil
-	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (c *inmemoryCache) Set(_ context.Context, url string, rawResponse []byte, expiration time.Duration) error {
+	now := c.clock.Now()
 	c.cache[url] = &cachedResult{
 		value:      rawResponse,
-		expiration: c.clock.Now().Add(expiration),
+		insertion:  now,
+		expiration: now.Add(expiration),
 	}
 	return nil
 }
