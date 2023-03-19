@@ -12,18 +12,16 @@ import (
 )
 
 type CachedRoundTripper struct {
-	delegate          http.RoundTripper
-	cache             Cache
-	defaultExpiration time.Duration
+	delegate http.RoundTripper
+	cache    Cache
 
 	g singleflight.Group
 }
 
-func Wrap(delegate http.RoundTripper, cache Cache, defaultExpiration time.Duration) *CachedRoundTripper {
+func Wrap(delegate http.RoundTripper, cache Cache) *CachedRoundTripper {
 	return &CachedRoundTripper{
-		delegate:          delegate,
-		cache:             cache,
-		defaultExpiration: defaultExpiration,
+		delegate: delegate,
+		cache:    cache,
 	}
 }
 
@@ -31,6 +29,15 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	// we only cache get requests for now
 	if req.Method != http.MethodGet {
 		return c.delegate.RoundTrip(req)
+	}
+
+	var expiration time.Duration
+	if expireSecsHeader := req.Header.Get(CacheExpirationHeader); expireSecsHeader == "" {
+		return c.delegate.RoundTrip(req)
+	} else if d, err := time.ParseDuration(expireSecsHeader); err != nil {
+		return nil, fmt.Errorf("invalid %s header value: %s", CacheExpirationHeader, expireSecsHeader)
+	} else {
+		expiration = d
 	}
 
 	urlKey := req.URL.String()
@@ -59,7 +66,7 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 				// TODO(ricebin): customize this
 				return nil, err
 			}
-			if err := c.cache.Set(ctx, urlKey, rawResp, c.defaultExpiration); err != nil {
+			if err := c.cache.Set(ctx, urlKey, rawResp, expiration); err != nil {
 				// TODO(ricebin): customize this
 				return nil, err
 			}
