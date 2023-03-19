@@ -33,33 +33,40 @@ func TestWrap_Happy(t *testing.T) {
 	defer rc.Close()
 
 	cache := httpcache_redis.New(rc)
-	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache, time.Hour)
+	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache)
 
 	hc := &http.Client{
 		Transport: cacheTransport,
 	}
 
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:0:/one")
+	expiration := 1 * time.Hour
+	assertResponseBody(t, hc, ts.URL+"/one", &expiration, "GET:0:/one")
 
 	// increment clock
 	s.FastForward(30 * time.Minute)
 
 	// read the same url, assert cache hit
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:0:/one")
-	assertResponseBody(t, hc, ts.URL+"/two", "GET:0:/two")
+	assertResponseBody(t, hc, ts.URL+"/one", &expiration, "GET:0:/one")
+	assertResponseBody(t, hc, ts.URL+"/two", &expiration, "GET:0:/two")
 
 	// increment clock
 	s.FastForward(45 * time.Minute)
 
 	// one expired
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:1:/one")
+	assertResponseBody(t, hc, ts.URL+"/one", &expiration, "GET:1:/one")
 	// two hasnt expired
-	assertResponseBody(t, hc, ts.URL+"/two", "GET:0:/two")
+	assertResponseBody(t, hc, ts.URL+"/two", &expiration, "GET:0:/two")
 }
 
-func assertResponseBody(t *testing.T, hc *http.Client, url string, expected string) {
-	// read the same url
-	if resp, err := hc.Get(url); err != nil {
+func assertResponseBody(t *testing.T, hc *http.Client, url string, expiration *time.Duration, expected string) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expiration != nil {
+		req.Header.Add(roundtripper.CacheExpirationHeader, expiration.String())
+	}
+	if resp, err := hc.Do(req); err != nil {
 		t.Fatal(err)
 	} else {
 		got, err := io.ReadAll(resp.Body)

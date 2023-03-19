@@ -15,8 +15,8 @@ github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f/go.mod h1:cu
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/redis/go-redis/v9 v9.0.2 h1:BA426Zqe/7r56kCcvxYLWe1mkaz71LKF77GwgFzSxfE=
 github.com/redis/go-redis/v9 v9.0.2/go.mod h1:/xDTe9EF1LM61hek62Poq2nzQSGj0xSrEtEHbBQevps=
-github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230319043218-c50a3c5d404d h1:zibNg/8Ow6SypAAiWoGfTObAgh83pwBrzog2dO36Rfs=
-github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230319043218-c50a3c5d404d/go.mod h1:kkKYbtyj5oiV86Ga1/o/6UMMS5+ZKB0SkObWaU34Z/4=
+github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230319160654-5e7b08fe16eb h1:RL+b5GyWFM7/i5FrvhvnFLLhzXfsw7kUv4CUwbr/Dbg=
+github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230319160654-5e7b08fe16eb/go.mod h1:kkKYbtyj5oiV86Ga1/o/6UMMS5+ZKB0SkObWaU34Z/4=
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/yuin/gopher-lua v1.1.0 h1:BojcDhfyDWgU2f2TOzYK/g5p2gxMrku8oupLDqlnSqE=
 github.com/yuin/gopher-lua v1.1.0/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
