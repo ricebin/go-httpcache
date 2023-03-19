@@ -47,6 +47,11 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		if realResponse, fetchErr := c.delegate.RoundTrip(req); fetchErr != nil {
 			return nil, fetchErr
 		} else {
+			// TODO(ricebin): make this configurable
+			if realResponse.StatusCode != http.StatusOK {
+				return realResponse, nil
+			}
+
 			// TODO(ricebin): should cache header
 			// TODO(ricebin): expiration header
 			rawResp, err := httputil.DumpResponse(realResponse, true)

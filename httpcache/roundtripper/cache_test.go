@@ -34,29 +34,68 @@ func TestWrap_Happy(t *testing.T) {
 		Transport: cacheTransport,
 	}
 
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:0:/one")
+	assertResponse(t, hc, ts.URL+"/one", http.StatusOK, "GET:0:/one")
 
 	// increment clock
 	fc.Add(30 * time.Minute)
 
 	// read the same url, assert cache hit
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:0:/one")
-	assertResponseBody(t, hc, ts.URL+"/two", "GET:0:/two")
+	assertResponse(t, hc, ts.URL+"/one", http.StatusOK, "GET:0:/one")
+	assertResponse(t, hc, ts.URL+"/two", http.StatusOK, "GET:0:/two")
 
 	// increment clock
 	fc.Add(45 * time.Minute)
 
 	// one expired
-	assertResponseBody(t, hc, ts.URL+"/one", "GET:1:/one")
+	assertResponse(t, hc, ts.URL+"/one", http.StatusOK, "GET:1:/one")
 	// two hasnt expired
-	assertResponseBody(t, hc, ts.URL+"/two", "GET:0:/two")
+	assertResponse(t, hc, ts.URL+"/two", http.StatusOK, "GET:0:/two")
 }
 
-func assertResponseBody(t *testing.T, hc *http.Client, url string, expected string) {
+func TestWrap_DontCache(t *testing.T) {
+	nextStatusCode := http.StatusBadRequest
+	hitCounters := make(map[string]int)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter := hitCounters[r.URL.String()]
+		hitCounters[r.URL.String()] = counter + 1
+		w.WriteHeader(nextStatusCode)
+		fmt.Fprint(w, r.Method, ":", counter, ":", r.URL.String())
+	}))
+	defer ts.Close()
+
+	fc := &fakeClock{
+		now: time.Now(),
+	}
+	cache := &inmemoryCache{
+		cache: make(map[string]*cachedResult),
+		clock: fc,
+	}
+	cacheTransport := roundtripper.Wrap(http.DefaultTransport, cache, time.Hour)
+
+	hc := &http.Client{
+		Transport: cacheTransport,
+	}
+
+	assertResponse(t, hc, ts.URL+"/one", http.StatusBadRequest, "GET:0:/one")
+	if (len(cache.cache)) != 0 {
+		t.Errorf("shuold not cache anything")
+	}
+
+	nextStatusCode = http.StatusInternalServerError
+	assertResponse(t, hc, ts.URL+"/one", http.StatusInternalServerError, "GET:1:/one")
+	if (len(cache.cache)) != 0 {
+		t.Errorf("shuold not cache anything")
+	}
+}
+
+func assertResponse(t *testing.T, hc *http.Client, url string, expectedCode int, expected string) {
 	// read the same url
 	if resp, err := hc.Get(url); err != nil {
 		t.Fatal(err)
 	} else {
+		if expectedCode != resp.StatusCode {
+			t.Errorf("expectect: %v but got: %v", expectedCode, resp.StatusCode)
+		}
 		got, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
