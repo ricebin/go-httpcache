@@ -155,6 +155,37 @@ func TestWrap_ChangeExpiration(t *testing.T) {
 	assertResponse(t, hc, ts.URL+"/one", &newExpiration, http.StatusOK, []byte("GET:1:/one"))
 }
 
+func TestWrap_DefaultExpiration(t *testing.T) {
+	hitCounters := make(map[string]int)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter := hitCounters[r.URL.String()]
+		hitCounters[r.URL.String()] = counter + 1
+		fmt.Fprint(w, r.Method, ":", counter, ":", r.URL.String())
+	}))
+	defer ts.Close()
+
+	fc := &fakeClock{
+		now: time.Now(),
+	}
+	cache := &inmemoryCache{
+		cache: make(map[string]*cachedResult),
+		clock: fc,
+	}
+
+	oneHourExpiration := 1 * time.Hour
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now, roundtripper.DefaultExpirationOption(oneHourExpiration))
+
+	hc := &http.Client{
+		Transport: cacheTransport,
+	}
+
+	assertResponse(t, hc, ts.URL+"/one", nil, http.StatusOK, []byte("GET:0:/one"))
+
+	fc.Add(30 * time.Minute)
+	assertResponse(t, hc, ts.URL+"/one", nil, http.StatusOK, []byte("GET:0:/one"))
+
+}
+
 func TestWrap_Binary(t *testing.T) {
 	payload := []byte{1, 2, 3, 4, 5}
 	counter := 0

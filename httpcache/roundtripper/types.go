@@ -11,3 +11,15 @@ type Cache interface {
 }
 
 const CacheExpirationHeader = "x-httpclient-cache-expiration"
+
+type Option func(*requestOption)
+
+func DefaultExpirationOption(expiration time.Duration) Option {
+	return func(opt *requestOption) {
+		opt.expiration = &expiration
+	}
+}
+
+type requestOption struct {
+	expiration *time.Duration
+}

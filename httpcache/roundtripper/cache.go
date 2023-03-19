@@ -14,20 +14,22 @@ import (
 type CachedRoundTripper struct {
 	delegate http.RoundTripper
 	cache    Cache
+	opts     []Option
 
 	now func() time.Time
 	g   singleflight.Group
 }
 
-func Wrap(delegate http.RoundTripper, cache Cache) *CachedRoundTripper {
-	return WrapWithClock(delegate, cache, time.Now)
+func Wrap(delegate http.RoundTripper, cache Cache, opts ...Option) *CachedRoundTripper {
+	return WrapWithClock(delegate, cache, time.Now, opts...)
 }
 
-func WrapWithClock(delegate http.RoundTripper, cache Cache, now func() time.Time) *CachedRoundTripper {
+func WrapWithClock(delegate http.RoundTripper, cache Cache, now func() time.Time, opts ...Option) *CachedRoundTripper {
 	return &CachedRoundTripper{
 		delegate: delegate,
 		cache:    cache,
 		now:      now,
+		opts:     opts,
 	}
 }
 
@@ -37,14 +39,23 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		return c.delegate.RoundTrip(req)
 	}
 
-	var expiration time.Duration
-	if expireSecsHeader := req.Header.Get(CacheExpirationHeader); expireSecsHeader == "" {
-		return c.delegate.RoundTrip(req)
-	} else if d, err := time.ParseDuration(expireSecsHeader); err != nil {
-		return nil, fmt.Errorf("invalid %s header value: %s", CacheExpirationHeader, expireSecsHeader)
-	} else {
-		expiration = d
+	reqOpt := requestOption{}
+	for _, o := range c.opts {
+		o(&reqOpt)
 	}
+
+	if expireSecsHeader := req.Header.Get(CacheExpirationHeader); expireSecsHeader != "" {
+		if d, err := time.ParseDuration(expireSecsHeader); err != nil {
+			return nil, fmt.Errorf("invalid %s header value: %s", CacheExpirationHeader, expireSecsHeader)
+		} else {
+			reqOpt.expiration = &d
+		}
+	}
+
+	if reqOpt.expiration == nil {
+		return c.delegate.RoundTrip(req)
+	}
+	expiration := *reqOpt.expiration
 
 	urlKey := req.URL.String()
 	ctx := req.Context()
