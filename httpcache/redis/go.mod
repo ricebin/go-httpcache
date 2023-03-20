@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/alicebob/miniredis/v2 v2.30.1
 	github.com/redis/go-redis/v9 v9.0.2
-	github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230319190646-1309b511a960
+	github.com/ricebin/go-tools/httpcache/roundtripper v0.0.0-20230320010440-d296eaa09665
 )
 
 require (
