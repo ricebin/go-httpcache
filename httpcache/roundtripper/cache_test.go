@@ -22,6 +22,8 @@ func TestWrap_Happy(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	listener := &statsCounter{}
+
 	fc := &fakeClock{
 		now: time.Now(),
 	}
@@ -29,7 +31,7 @@ func TestWrap_Happy(t *testing.T) {
 		cache: make(map[string]*cachedResult),
 		clock: fc,
 	}
-	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now)
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now, roundtripper.ListenerOption(listener))
 
 	hc := &http.Client{
 		Transport: cacheTransport,
@@ -38,21 +40,29 @@ func TestWrap_Happy(t *testing.T) {
 	expiration := 1 * time.Hour
 
 	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:0:/one"))
+	listener.asserStats(t, 0, 1)
 
 	// increment clock
 	fc.Add(30 * time.Minute)
 
 	// read the same url, assert cache hit
 	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:0:/one"))
+	listener.asserStats(t, 1, 1)
+
+	// fresh /two
 	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, []byte("GET:0:/two"))
+	listener.asserStats(t, 1, 2)
 
 	// increment clock
 	fc.Add(45 * time.Minute)
 
 	// one expired
 	assertResponse(t, hc, ts.URL+"/one", &expiration, http.StatusOK, []byte("GET:1:/one"))
+	listener.asserStats(t, 1, 3)
+
 	// two hasnt expired
 	assertResponse(t, hc, ts.URL+"/two", &expiration, http.StatusOK, []byte("GET:0:/two"))
+	listener.asserStats(t, 2, 3)
 }
 
 func TestWrap_DontCache_OnError(t *testing.T) {
@@ -290,4 +300,26 @@ func (c *inmemoryCache) Set(_ context.Context, url string, rawResponse []byte, e
 		expiration: now.Add(expiration),
 	}
 	return nil
+}
+
+type statsCounter struct {
+	hits   int
+	misses int
+}
+
+func (s *statsCounter) Miss(_ *http.Request) {
+	s.misses = s.misses + 1
+}
+
+func (s *statsCounter) Hit(_ *http.Request) {
+	s.hits = s.hits + 1
+}
+
+func (s *statsCounter) asserStats(t *testing.T, expectedHits, expectedMisses int) {
+	if expectedHits != s.hits {
+		t.Errorf("expected %d hits but got: %d", expectedHits, s.hits)
+	}
+	if expectedMisses != s.misses {
+		t.Errorf("expected %d misses but got: %d", expectedMisses, s.misses)
+	}
 }

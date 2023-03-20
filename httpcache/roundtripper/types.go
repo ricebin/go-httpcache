@@ -2,6 +2,7 @@ package roundtripper
 
 import (
 	"context"
+	"net/http"
 	"time"
 )
 
@@ -20,6 +21,18 @@ func DefaultExpirationOption(expiration time.Duration) Option {
 	}
 }
 
+func ListenerOption(l EventListener) Option {
+	return func(opt *requestOption) {
+		opt.listeners = append(opt.listeners, l)
+	}
+}
+
+type EventListener interface {
+	Miss(req *http.Request)
+	Hit(req *http.Request)
+}
+
 type requestOption struct {
 	expiration *time.Duration
+	listeners  []EventListener
 }

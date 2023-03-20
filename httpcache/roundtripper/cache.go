@@ -64,8 +64,10 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		// TODO(ricebin): customize this
 		return nil, err
 	} else if cached != nil && insertionTime != nil && insertionTime.Add(expiration).After(c.now()) {
+		notifyEvent(true, req, reqOpt.listeners)
 		return http.ReadResponse(bufio.NewReader(bytes.NewReader(cached)), req)
 	}
+	notifyEvent(false, req, reqOpt.listeners)
 
 	if resp, err, _ := c.g.Do(urlKey, func() (any, error) {
 		if realResponse, fetchErr := c.delegate.RoundTrip(req); fetchErr != nil {
@@ -97,5 +99,15 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	} else {
 
 		return httpResp, nil
+	}
+}
+
+func notifyEvent(hit bool, req *http.Request, listeners []EventListener) {
+	for _, l := range listeners {
+		if hit {
+			l.Hit(req)
+		} else {
+			l.Miss(req)
+		}
 	}
 }
