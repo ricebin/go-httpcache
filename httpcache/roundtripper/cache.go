@@ -39,7 +39,9 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		return c.delegate.RoundTrip(req)
 	}
 
-	reqOpt := requestOption{}
+	reqOpt := requestOption{
+		keyFunc: DefaultKeyFunc,
+	}
 	for _, o := range c.opts {
 		o(&reqOpt)
 	}
@@ -57,7 +59,7 @@ func (c *CachedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 	expiration := *reqOpt.expiration
 
-	urlKey := req.URL.String()
+	urlKey := reqOpt.keyFunc(req)
 	ctx := req.Context()
 
 	if cached, insertionTime, err := c.cache.Get(ctx, urlKey); err != nil {

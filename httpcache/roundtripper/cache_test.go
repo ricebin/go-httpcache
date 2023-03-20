@@ -228,6 +228,39 @@ func TestWrap_Binary(t *testing.T) {
 	}
 }
 
+func TestWrap_KeyFuncOption(t *testing.T) {
+	counter := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter = counter + 1
+		fmt.Fprint(w, counter)
+	}))
+	defer ts.Close()
+
+	fc := &fakeClock{
+		now: time.Now(),
+	}
+	cache := &inmemoryCache{
+		cache: make(map[string]*cachedResult),
+		clock: fc,
+	}
+	customKeyFunc := func(req *http.Request) string {
+		return "custom_" + roundtripper.DefaultKeyFunc(req) + "/suffix"
+	}
+	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, fc.Now, roundtripper.KeyFuncOption(customKeyFunc))
+
+	hc := &http.Client{
+		Transport: cacheTransport,
+	}
+
+	oneHourExpiration := 1 * time.Hour
+	assertResponse(t, hc, ts.URL+"/one", &oneHourExpiration, http.StatusOK, []byte("1"))
+
+	expectedKey := "custom_" + ts.URL + "/one/suffix"
+	if _, ok := cache.cache[expectedKey]; !ok {
+		t.Errorf("expected key not found: %s", expectedKey)
+	}
+}
+
 func assertResponse(t *testing.T, hc *http.Client, url string, expire *time.Duration, expectedCode int, expected []byte) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

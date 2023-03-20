@@ -27,6 +27,18 @@ func ListenerOption(l EventListener) Option {
 	}
 }
 
+func KeyFuncOption(kf KeyFunc) Option {
+	return func(opt *requestOption) {
+		opt.keyFunc = kf
+	}
+}
+
+func DefaultKeyFunc(req *http.Request) string {
+	return req.URL.String()
+}
+
+type KeyFunc func(r *http.Request) string
+
 type EventListener interface {
 	Miss(req *http.Request)
 	Hit(req *http.Request)
@@ -35,4 +47,5 @@ type EventListener interface {
 type requestOption struct {
 	expiration *time.Duration
 	listeners  []EventListener
+	keyFunc    KeyFunc
 }
