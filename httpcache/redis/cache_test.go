@@ -17,6 +17,12 @@ import (
 	httpcache_redis "github.com/ricebin/go-tools/httpcache/redis"
 )
 
+var (
+	defaultUrlKeyFunc = func(url string) string {
+		return url
+	}
+)
+
 func TestWrap_Happy(t *testing.T) {
 	hitCounters := make(map[string]int)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +43,7 @@ func TestWrap_Happy(t *testing.T) {
 	})
 	defer rc.Close()
 
-	cache := httpcache_redis.NewWithClock(rc, clock.Now)
+	cache := httpcache_redis.NewWithClock(rc, defaultUrlKeyFunc, clock.Now)
 	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, clock.Now)
 
 	hc := &http.Client{
@@ -91,7 +97,7 @@ func TestWrap_Binary(t *testing.T) {
 	})
 	defer rc.Close()
 
-	cache := httpcache_redis.NewWithClock(rc, clock.Now)
+	cache := httpcache_redis.NewWithClock(rc, defaultUrlKeyFunc, clock.Now)
 	cacheTransport := roundtripper.WrapWithClock(http.DefaultTransport, cache, clock.Now)
 
 	hc := &http.Client{

@@ -22,20 +22,26 @@ func (r *Result) Value() []byte {
 }
 
 type Cache struct {
-	c   *redis.Client
-	now func() time.Time
+	c          *redis.Client
+	urlKeyFunc func(string) string
+	now        func() time.Time
 }
 
 func New(c *redis.Client) *Cache {
-	return NewWithClock(c, time.Now)
+	return NewWithKeyFunc(c, func(url string) string { return url })
 }
 
-func NewWithClock(c *redis.Client, now func() time.Time) *Cache {
-	return &Cache{c: c, now: now}
+func NewWithKeyFunc(c *redis.Client, urlKeyFunc func(url string) string) *Cache {
+	return NewWithClock(c, urlKeyFunc, time.Now)
+}
+
+func NewWithClock(c *redis.Client, urlKeyFunc func(string) string, now func() time.Time) *Cache {
+	return &Cache{c: c, urlKeyFunc: urlKeyFunc, now: now}
 }
 
 func (c *Cache) Get(ctx context.Context, url string) ([]byte, *time.Time, error) {
-	b, err := c.c.Get(ctx, url).Bytes()
+	key := c.urlKeyFunc(url)
+	b, err := c.c.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		return nil, nil, nil
 	} else if err != nil {
@@ -67,7 +73,8 @@ func (c *Cache) Set(ctx context.Context, url string, rawResponse []byte, expirat
 	v = binary.AppendUvarint(v, uint64(c.now().Unix()))
 	v = append(v, rawResponse...)
 
-	result, err := c.c.Set(ctx, url, v, expiration).Result()
+	key := c.urlKeyFunc(url)
+	result, err := c.c.Set(ctx, key, v, expiration).Result()
 	if err != nil {
 		return err
 	} else if result != "OK" {
